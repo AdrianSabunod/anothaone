@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -12,7 +14,32 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.AppCompat"
         tools:targetApi="31">
-        <activity android:name=".Animation_tubigActivity"
+        <activity
+            android:name=".gcash_screen"
+            android:exported="false" />
+        <activity
+            android:name=".check_out_page"
+            android:exported="false" />
+        <activity
+            android:name=".online_order"
+            android:exported="false" />
+        <activity
+            android:name=".Pick_up"
+            android:exported="false" />
+        <activity
+            android:name=".Hompage"
+            android:exported="false" />
+        <activity
+            android:name=".SignInActivity"
+            android:exported="false" />
+        <activity
+            android:name=".SignUpAct"
+            android:exported="false" />
+        <activity
+            android:name=".WelcomeAct"
+            android:exported="false" />
+        <activity
+            android:name=".Animation_tubigActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -24,9 +51,11 @@
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
-            android:theme="@style/Theme.WaterDelivery">
+            android:theme="@style/Theme.WaterDelivery" />
 
-        </activity>
+        <meta-data
+            android:name="com.google.android.gms.version"
+            android:value="@integer/google_play_services_version" />
     </application>
 
 </manifest>

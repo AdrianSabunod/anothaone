@@ -12,12 +12,11 @@ import com.example.waterdelivery.R.layout
 class Animation_tubigActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(layout.activity_animation_tubig)
+        setContentView(R.layout.activity_animation_tubig)
         supportActionBar?.hide()
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+        window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
 
-
-        val textView = findViewById<TextView>(id.TubigSplashText)
+        val textView = findViewById<TextView>(R.id.TubigSplashText)
         textView.animate().translationX(1000F).setDuration(1000).setStartDelay(2500)
 
         val thread: Thread = object : Thread() {
@@ -27,7 +26,7 @@ class Animation_tubigActivity : AppCompatActivity() {
                 } catch (e: Exception) {
                     e.printStackTrace()
                 } finally {
-                    val intent = Intent(this@Animation_tubigActivity, MainActivity::class.java)
+                    val intent = Intent(this@Animation_tubigActivity, WelcomeAct::class.java)
                     startActivity(intent)
                     finish()
                 }
