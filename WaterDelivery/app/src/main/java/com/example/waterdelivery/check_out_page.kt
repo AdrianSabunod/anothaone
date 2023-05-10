@@ -4,9 +4,6 @@ import android.content.ContentValues.TAG
 import android.content.Intent
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import android.text.Editable
 import android.util.Log
 import android.widget.CheckBox
 import android.widget.MultiAutoCompleteTextView
@@ -15,6 +12,7 @@ import com.google.firebase.database.*
 import android.widget.Button
 import androidx.appcompat.app.AlertDialog
 import com.google.firebase.database.FirebaseDatabase
+
 
 class check_out_page : AppCompatActivity() {
 
@@ -84,11 +82,12 @@ class check_out_page : AppCompatActivity() {
                         } else {
                             "Will be paying for the containers"
                         }
-                        orderData["name"] = user.email?: ""
+                        orderData["name"] = user.email ?: ""
                         orderData["username"] = user.displayName ?: ""
                         orderData["userId"] = userId
 
-                        moveUserOrderDataToReadyForPickup(userId, orderData)
+                        moveOrderDataToReadyForPickup(userId, orderData,)
+
                     }
                 }
             }
@@ -100,42 +99,83 @@ class check_out_page : AppCompatActivity() {
         // Retrieve order data for the current user from Firebase Realtime Database
         retrieveOrderDataForCurrentUser()
     }
+    private fun moveOrderDataToReadyForPickup(userId: String, orderData: HashMap<String, Any>) {
+        val databaseRef = FirebaseDatabase.getInstance().reference
+        val ordersReadyRef = databaseRef.child("orders_ready_for_pick_up")
+        val paidOrWaitingRef = databaseRef.child("Paid_or_WaitingforPickup")
 
-    private fun moveUserOrderDataToReadyForPickup(userId: String, orderData: HashMap<String, Any>) {
-        val ordersReadyRef = databaseRef.child("orders_ready_for_pick_up").child(userId)
-        ordersReadyRef.setValue(orderData)
-            .addOnSuccessListener {
-                // Data moved successfully
+        val containerOption = if (checkBoxNoContainer.isChecked) {
+            "Will purchase water with container"
+        } else {
+            "Has container"
+        }
 
-                // Remove order data from the "orders" node
-                val userOrderRef = databaseRef.child("orders").child(userId)
-                userOrderRef.setValue(null) // Set the value to null
-                    .addOnSuccessListener {
-                        // Data set to null successfully in "orders" node
+        orderData["containerOption"] = containerOption
 
-                        // Show success prompt to the user
-                        showSuccessPrompt("Order placed successfully. Ready for pickup!")
+        val orderId = ordersReadyRef.push().key
 
-                        // Redirect to Homepage.kt
-                    }
-                    .addOnFailureListener { error ->
-                        // Failed to set data to null in "orders" node
-                        Log.e(TAG, "Failed to set user order data to null in 'orders' node: $error")
+        if (orderId != null) {
+            ordersReadyRef.child(orderId).setValue(orderData).addOnCompleteListener { task ->
+                if (task.isSuccessful) {
+                    val ordersRef = databaseRef.child("orders")
+                    ordersRef.child(userId).addListenerForSingleValueEvent(object : ValueEventListener {
+                        override fun onDataChange(dataSnapshot: DataSnapshot) {
+                            if (dataSnapshot.exists()) {
+                                val existingOrderData = dataSnapshot.value as HashMap<String, Any>
 
-                        // Show error prompt to the user
-                        showErrorPrompt("Failed to place the order. Please try again.")
-                    }
+                                // Create a new order key under Paid_or_WaitingforPickup
+                                val newOrderKey = paidOrWaitingRef.push().key
+
+                                if (newOrderKey != null) {
+                                    // Move the existing order data to Paid_or_WaitingforPickup with the new order key
+                                    paidOrWaitingRef.child(newOrderKey).setValue(existingOrderData)
+                                        .addOnCompleteListener { moveTask ->
+                                            if (moveTask.isSuccessful) {
+                                                // Remove the existing order from orders
+                                                ordersRef.child(userId).removeValue()
+                                                    .addOnCompleteListener { removeTask ->
+                                                        if (removeTask.isSuccessful) {
+                                                            // Clear the multiAutoCompleteTextView after successful order placement
+                                                            orderTextView.text.clear()
+                                                            showSuccessPrompt("Order placed successfully")
+                                                        } else {
+                                                            showErrorPrompt("Failed to place order")
+                                                        }
+                                                    }
+                                            } else {
+                                                showErrorPrompt("Failed to place order")
+                                            }
+                                        }
+                                } else {
+                                    showErrorPrompt("Failed to place order")
+                                }
+                            } else {
+                                // No existing order data, directly move the new order to Paid_or_WaitingforPickup
+                                paidOrWaitingRef.child(orderId).setValue(orderData)
+                                    .addOnCompleteListener { moveTask ->
+                                        if (moveTask.isSuccessful) {
+                                            // Clear the multiAutoCompleteTextView after successful order placement
+                                            orderTextView.text.clear()
+                                            showSuccessPrompt("Order placed successfully")
+                                        } else {
+                                            showErrorPrompt("Failed to place order")
+                                        }
+                                    }
+                            }
+                        }
+
+                        override fun onCancelled(databaseError: DatabaseError) {
+                            showErrorPrompt("Failed to place order")
+                        }
+                    })
+                } else {
+                    showErrorPrompt("Failed to place order")
+                }
             }
-            .addOnFailureListener { error ->
-                // Failed to move order data
-                Log.e(TAG, "Failed to move order data to Ready for Pickup: $error")
-
-                // Show error prompt to the user
-                showErrorPrompt("Failed to place the order. Please try again.")
-            }
+        } else {
+            showErrorPrompt("Failed to place order")
+        }
     }
-
-
     private fun getSelectedPaymentMethod(): CheckBox? {
         if (checkBoxGcash.isChecked && !checkBoxPickup.isChecked) {
             return checkBoxGcash
@@ -169,7 +209,7 @@ class check_out_page : AppCompatActivity() {
         if (!isFinishing && !isDestroyed) {
             val alertDialog = AlertDialog.Builder(this)
                 .setTitle(message)
-                .setMessage(message)
+                .setMessage("Ready for Pick-up")
                 .setCancelable(false) // Prevent dismissing the dialog by clicking outside or pressing back
                 .setPositiveButton("OK") { dialog, _ ->
                     dialog.dismiss() // Dismiss the dialog when "OK" is pressed
@@ -206,46 +246,41 @@ class check_out_page : AppCompatActivity() {
             val ordersRef = databaseRef.child("orders")
 
             ordersRef.orderByChild("userId").equalTo(userId)
+                .limitToLast(1)
                 .addListenerForSingleValueEvent(object : ValueEventListener {
                     override fun onDataChange(dataSnapshot: DataSnapshot) {
                         if (dataSnapshot.exists()) {
-                            val orders = dataSnapshot.children
+                            val orderSnapshot = dataSnapshot.children.first()
 
-                            val orderDetails = StringBuilder()
-                            var totalCost = 0
+                            val item = orderSnapshot.child("item").value.toString()
+                            val quantity = orderSnapshot.child("quantity").value.toString().toInt()
+                            val hasContainer =
+                                orderSnapshot.child("hasContainer").value.toString().toBoolean()
 
-                            for (order in orders) {
-                                val item = order.child("item").value.toString()
-                                val quantity = order.child("quantity").value.toString().toInt()
-                                val hasContainer =
-                                    order.child("hasContainer").value.toString().toBoolean()
-
-                                val orderCost = if (hasContainer) {
-                                    quantity * waterPrice * 10
-                                } else {
-                                    quantity * waterPrice
-                                }
-
-                                orderDetails.append("$item - $quantity water(s) - PHP $orderCost\n")
-                                totalCost += orderCost
+                            val orderCost = if (hasContainer) {
+                                quantity * waterPrice * 10
+                            } else {
+                                quantity * waterPrice
                             }
 
-                            totalCost += deliveryFee
-
+                            val orderDetails = StringBuilder()
+                            orderDetails.append("$item - $quantity water(s) - PHP $orderCost\n")
                             orderDetails.append("Delivery Fee - PHP $deliveryFee\n")
+
+                            val totalCost = orderCost + deliveryFee
                             orderDetails.append("Total - PHP $totalCost")
 
                             // Set the order details in the MultiAutoCompleteTextView
                             orderTextView.setText(orderDetails.toString())
                         } else {
-                            // No orders found for the current user
-                            orderTextView.setText("No orders received")
+                            // No order found for the current user
+                            orderTextView.setText("No order received")
                         }
                     }
 
                     override fun onCancelled(databaseError: DatabaseError) {
                         // Handle database error
-                        orderTextView.setText("Failed to retrieve orders")
+                        orderTextView.setText("Failed to retrieve order")
                     }
                 })
         }
@@ -257,27 +292,28 @@ class check_out_page : AppCompatActivity() {
             val userId = user.uid
             val ordersRef = databaseRef.child("orders")
 
-            ordersRef.orderByChild("userId").equalTo(userId).addListenerForSingleValueEvent(object : ValueEventListener {
-                override fun onDataChange(dataSnapshot: DataSnapshot) {
-                    if (dataSnapshot.exists()) {
-                        for (orderSnapshot in dataSnapshot.children) {
+            ordersRef.orderByChild("userId").equalTo(userId)
+                .limitToLast(1)
+                .addListenerForSingleValueEvent(object : ValueEventListener {
+                    override fun onDataChange(dataSnapshot: DataSnapshot) {
+                        if (dataSnapshot.exists()) {
+                            val orderSnapshot = dataSnapshot.children.first()
                             orderSnapshot.ref.removeValue()
+                            orderTextView.setText("Order cancelled. No orders received.")
+
+                            // Navigate to HomePage
+                            val intent = Intent(this@check_out_page,Hompage::class.java)
+                            startActivity(intent)
+                            finish() // Optional: Close the current activity if needed
+                        } else {
+                            orderTextView.setText("No orders received")
                         }
-                        orderTextView.setText("Order cancelled. No orders received.")
-
-                        // Navigate to HomePage
-                        val intent = Intent(this@check_out_page,Hompage::class.java)
-                        startActivity(intent)
-                        finish() // Optional: Close the current activity if needed
-                    } else {
-                        orderTextView.setText("No orders received")
                     }
-                }
 
-                override fun onCancelled(databaseError: DatabaseError) {
-                    orderTextView.setText("Failed to delete orders")
-                }
-            })
+                    override fun onCancelled(databaseError: DatabaseError) {
+                        orderTextView.setText("Failed to delete order")
+                    }
+                })
         }
     }
 
